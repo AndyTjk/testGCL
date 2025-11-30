@@ -38,12 +38,16 @@
     <header>
       <h1>GCL Lexical Scanner</h1>
     </header>
-    <p class="lead">Aplikasi web (HTML + JS) yang melakukan <strong>lexical scanning</strong> untuk Guarded Command Language. Tempel kode di kiri lalu tekan <em>Scan</em>.</p>
+    <h3>Anggota Kelompok:</h3>
+    <ol>
+    <li>JEAN KALENGKONGAN (252021100001)</li>
+    <li> TRI SANDY TJAKRA (252021100015)</li>
+    </ol>
 
     <div class="grid">
       <div class="card">
         <label class="small">Program (GCL)</label>
-        <textarea id="source" placeholder="Contoh: if x < y -> x := x + 1; [] x >= y -> y := y - 1; fi">if </textarea>
+        <textarea id="source" placeholder="Contoh: if x < y -> x := x + 1; [] x >= y -> y := y - 1; fi">if x < y -> x := x + 1; [] x >= y -> y := y - 1; fi </textarea>
         <div class="controls">
           <button id="scanBtn">Scan</button>
           <button id="clearBtn" class="secondary">Clear</button>
@@ -52,7 +56,6 @@
         </div>
         <div style="display:flex;gap:10px;margin-top:12px;align-items:flex-start">
           <div style="flex:1">
-            <div class="small" style="margin-bottom:6px">Sample programs</div>
             <div class="sample-list">
               <button class="secondary" data-sample="simple">Simple alternative</button>
               <button class="secondary" data-sample="repeat">Simple repetition</button>
@@ -85,7 +88,7 @@
       </div>
     </div>
 
-    <footer>Open in browser — tidak perlu server. Buat tugas GCL cepat.</footer>
+    <footer></footer>
   </div>
 
 <script>
