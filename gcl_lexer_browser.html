@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GCL Lexical Scanner — Browser App</title>
+  <style>
+    :root{--bg:#071226;--card:#0f2838;--accent:#ffd24a;--muted:#9fb4d3;--ok:#7aff6c;--bad:#ff7a7a}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,var(--bg),#021028);color:#e6eef8;padding:28px}
+    .wrap{max-width:1000px;margin:0 auto}
+    header{display:flex;align-items:center;gap:16px}
+    h1{margin:0;color:var(--accent)}
+    p.lead{margin:6px 0 20px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1fr 420px;gap:18px}
+    .card{background:var(--card);padding:14px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.45)}
+    textarea{width:100%;height:320px;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:#021826;color:#e6eef8;font-family:monospace;font-size:13px}
+    .controls{display:flex;gap:8px;margin-top:10px}
+    button{background:var(--accent);border:none;padding:8px 12px;border-radius:8px;font-weight:600;cursor:pointer}
+    button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .muted{color:var(--muted);font-size:13px}
+    table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+    th,td{padding:8px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.03)}
+    th{background:rgba(255,255,255,0.03);color:#cfeac6}
+    .token-type{font-family:monospace;background:rgba(255,255,255,0.02);padding:4px 8px;border-radius:6px}
+    .status{padding:10px;border-radius:8px;margin-top:10px}
+    .ok{background:rgba(122,255,108,0.08);border:1px solid rgba(122,255,108,0.12);color:var(--ok)}
+    .err{background:rgba(255,122,122,0.08);border:1px solid rgba(255,122,122,0.12);color:var(--bad)}
+    .small{font-size:12px;color:var(--muted)}
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+    .sample-list{display:flex;flex-direction:column;gap:6px}
+    .sample-list button{padding:6px 8px;font-size:13px}
+    @media (max-width:900px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>GCL Lexical Scanner</h1>
+    </header>
+    <p class="lead">Aplikasi web (HTML + JS) yang melakukan <strong>lexical scanning</strong> untuk Guarded Command Language. Tempel kode di kiri lalu tekan <em>Scan</em>.</p>
+
+    <div class="grid">
+      <div class="card">
+        <label class="small">Program (GCL)</label>
+        <textarea id="source" placeholder="Contoh: if x < y -> x := x + 1; [] x >= y -> y := y - 1; fi">if </textarea>
+        <div class="controls">
+          <button id="scanBtn">Scan</button>
+          <button id="clearBtn" class="secondary">Clear</button>
+          <div style="flex:1"></div>
+          <div class="muted">B as guard &amp; 1 assignment per guard (fit to assignment slide)</div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:12px;align-items:flex-start">
+          <div style="flex:1">
+            <div class="small" style="margin-bottom:6px">Sample programs</div>
+            <div class="sample-list">
+              <button class="secondary" data-sample="simple">Simple alternative</button>
+              <button class="secondary" data-sample="repeat">Simple repetition</button>
+              <button class="secondary" data-sample="invalid">Invalid (two assignments)</button>
+            </div>
+          </div>
+          <div style="width:200px">
+            <div class="small">Export</div>
+            <div style="display:flex;gap:8px;margin-top:6px">
+              <button id="downloadJson" class="secondary">JSON</button>
+              <button id="copyBtn" class="secondary">Copy</button>
+            </div>
+            <div class="small" style="margin-top:8px">Lexer info:</div>
+            <div class="small" style="margin-top:6px">keywords: if,fi,do,od,then,else,skip,true,false<br>ops: ->, [], :=, <=, >=, !=, +,-,*,/, &lt;,&gt; etc.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div class="small">Hasil Token</div>
+            <div id="summary" class="muted">Tidak ada hasil. Tekan <strong>Scan</strong>.</div>
+          </div>
+          <div id="statusBox"></div>
+        </div>
+
+        <div id="tokensWrap"></div>
+        <div id="validation"></div>
+      </div>
+    </div>
+
+    <footer>Open in browser — tidak perlu server. Buat tugas GCL cepat.</footer>
+  </div>
+
+<script>
+// Lexer implementation in JS
+(function(){
+  const tokenSpecs = [
+    ['COMMENT', /\/\/[^\n]*/y],
+    ['MCOMMENT', /\/\*[\s\S]*?\*\//y],
+    ['ARROW', /->/y],
+    ['ALT', /\[\]/y],
+    ['ASSIGN', /:=/y],
+    ['LE', /<=/y],
+    ['GE', />=/y],
+    ['NE', /!=/y],
+    ['AND', /&&/y],
+    ['OR', /\|\|/y],
+    ['NOT', /!/y],
+    ['LT', /</y],
+    ['GT', />/y],
+    ['EQ', /=/y],
+    ['LPAREN', /\(/y],
+    ['RPAREN', /\)/y],
+    ['SEMICOLON', /;/y],
+    ['PLUS', /\+/y],
+    ['MINUS', /-/y],
+    ['TIMES', /\*/y],
+    ['DIV', /\//y],
+    ['NUMBER', /\d+/y],
+    ['ID', /[A-Za-z_][A-Za-z0-9_]*/y],
+    ['NEWLINE', /\n/y],
+    ['SKIP', /[ \t\r]+/y],
+    ['UNKNOWN', /./y]
+  ];
+
+  const keywords = { if: 'IF', fi: 'FI', do: 'DO', od: 'OD', then: 'THEN', else: 'ELSE', skip: 'SKIP', true:'TRUE', false:'FALSE' };
+
+  function tokenize(input){
+    let tokens = [];
+    let i = 0;
+    while(i < input.length){
+      let matched = false;
+      for(let [type, regex] of tokenSpecs){
+        regex.lastIndex = i;
+        let m = regex.exec(input);
+        if(m && m.index === i){
+          matched = true;
+          let value = m[0];
+          if(type === 'NEWLINE' || type === 'SKIP' || type === 'COMMENT' || type === 'MCOMMENT'){
+            // skip
+          } else if(type === 'ID'){
+            const lw = value.toLowerCase();
+            if(keywords[lw]) tokens.push({type: keywords[lw], value, pos:i});
+            else tokens.push({type: 'IDENT', value, pos:i});
+          } else if(type === 'NUMBER'){
+            tokens.push({type:'NUMBER', value, pos:i});
+          } else if(type === 'UNKNOWN'){
+            tokens.push({type:'ERROR', value, pos:i});
+          } else {
+            tokens.push({type, value, pos:i});
+          }
+          i += value.length;
+          break;
+        }
+      }
+      if(!matched){
+        // safety to avoid infinite loop
+        tokens.push({type:'ERROR', value: input[i], pos:i});
+        i++;
+      }
+    }
+    return tokens;
+  }
+
+  // Simple validation: B as guard (only comparisons or true/false) and one assignment per guard
+  function validateStructure(tokens){
+    const errors = [];
+    // convert tokens to sequence of values for pattern finding
+    const vals = tokens.map(t=>t.value);
+    // find if..fi blocks
+    let i = 0;
+    while(i < tokens.length){
+      if(tokens[i].type === 'IF'){
+        // find matching FI
+        let j = i+1;
+        while(j < tokens.length && tokens[j].type !== 'FI') j++;
+        if(j >= tokens.length){ errors.push({pos: tokens[i].pos, message: 'Missing fi for if'}); break; }
+        // inspect the block between i+1 and j-1
+        inspectGuardedBlock(tokens.slice(i+1, j), errors);
+        i = j+1; continue;
+      } else if(tokens[i].type === 'DO'){
+        // find matching OD
+        let j = i+1;
+        while(j < tokens.length && tokens[j].type !== 'OD') j++;
+        if(j >= tokens.length){ errors.push({pos: tokens[i].pos, message: 'Missing od for do'}); break; }
+        inspectGuardedBlock(tokens.slice(i+1, j), errors, {isLoop:true});
+        i = j+1; continue;
+      }
+      i++;
+    }
+    return errors;
+  }
+
+  function inspectGuardedBlock(sliceTokens, errors, opts={isLoop:false}){
+    // split alternatives by ALT ([]) tokens
+    const parts = [];
+    let current = [];
+    for(let t of sliceTokens){
+      if(t.type === 'ALT'){
+        parts.push(current); current = [];
+      } else current.push(t);
+    }
+    if(current.length) parts.push(current);
+
+    // for each alternative, find guard before ARROW and body after
+    for(let k=0;k<parts.length;k++){
+      const part = parts[k];
+      const arrowIdx = part.findIndex(t => t.type === 'ARROW');
+      if(arrowIdx === -1){ errors.push({pos: part[0]?.pos||0, message: `Alternative ${k+1} missing '->'`}); continue; }
+      const guardTokens = part.slice(0, arrowIdx);
+      const bodyTokens = part.slice(arrowIdx+1);
+      // validate guard: must contain one comparison operator or true/false
+      const guardStr = guardTokens.map(t=>t.value).join(' ');
+      const hasCompare = guardTokens.some(t=> ['LT','LE','GT','GE','EQ','NE','TRUE','FALSE','IDENT','NUMBER'].includes(t.type) && /<|<=|>|>=|=|!=/.test(t.value)) || guardTokens.some(t=> t.type==='TRUE' || t.type==='FALSE') || guardTokens.some(t=> ['LT','LE','GT','GE','EQ','NE'].includes(t.type));
+      // simpler: check if guard contains comparison operator tokens
+      const compareOps = guardTokens.some(t=> ['LT','LE','GT','GE','EQ','NE'].includes(t.type));
+      if(!compareOps && !guardTokens.some(t=>t.type==='TRUE' || t.type==='FALSE')){
+        errors.push({pos: guardTokens[0]?.pos||0, message: `Guard ${k+1} might not be a simple boolean comparison (B as guard). Found: "${guardStr.trim()}"`});
+      }
+
+      // validate body: count assignments ':=' occurrences — must be exactly 1 (per slide)
+      const assignCount = bodyTokens.filter(t=> t.type==='ASSIGN').length;
+      if(assignCount === 0){ errors.push({pos: bodyTokens[0]?.pos||0, message: `Alternative ${k+1} has no assignment in body.`}); }
+      else if(assignCount > 1){ errors.push({pos: bodyTokens[0]?.pos||0, message: `Alternative ${k+1} has more than one assignment (found ${assignCount}).`}); }
+    }
+  }
+
+  // UI
+  const sourceEl = document.getElementById('source');
+  const scanBtn = document.getElementById('scanBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const tokensWrap = document.getElementById('tokensWrap');
+  const summary = document.getElementById('summary');
+  const statusBox = document.getElementById('statusBox');
+  const validationDiv = document.getElementById('validation');
+  const copyBtn = document.getElementById('copyBtn');
+  const downloadJson = document.getElementById('downloadJson');
+
+  document.querySelectorAll('.sample-list button').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const s = b.getAttribute('data-sample');
+      if(s==='simple') sourceEl.value = 'if x < y -> x := x + 1; [] x >= y -> y := y - 1; fi';
+      if(s==='repeat') sourceEl.value = 'do x < 10 -> x := x + 1; [] x >= 10 -> skip od';
+      if(s==='invalid') sourceEl.value = 'if x < y -> x := x + 1; [] y < 5 -> x := 0; y := 2 fi';
+    });
+  });
+
+  function renderTokens(tokens){
+    if(tokens.length === 0){ tokensWrap.innerHTML = '<div class="muted">Tidak ada token.</div>'; summary.textContent = '0 token'; return; }
+    let html = '<table><thead><tr><th>Pos</th><th>Type</th><th>Value</th></tr></thead><tbody>';
+    for(const t of tokens){
+      html += `<tr><td>${String(t.pos).padStart(4,'0')}</td><td><span class="token-type">${t.type}</span></td><td><code>${escapeHtml(t.value)}</code></td></tr>`;
+    }
+    html += '</tbody></table>';
+    tokensWrap.innerHTML = html;
+    summary.textContent = `${tokens.length} token(s)`;
+  }
+
+  function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  scanBtn.addEventListener('click', ()=>{
+    const src = sourceEl.value;
+    const tokens = tokenize(src);
+    renderTokens(tokens);
+    // validation
+    const errs = validateStructure(tokens);
+    if(errs.length===0){
+      validationDiv.innerHTML = '<div class="status ok">Structure OK — passes basic "B as guard" and "1 assignment per guard" checks.</div>';
+    } else {
+      validationDiv.innerHTML = '<div class="status err"><strong>Validation errors:</strong><ul style="margin:8px 0 0 18px">'+errs.map(e=>`<li>${escapeHtml(e.message)}</li>`).join('')+'</ul></div>';
+    }
+    statusBox.innerHTML = errs.length===0 ? '<div class="ok small" style="padding:6px;border-radius:6px">OK</div>' : `<div class="err small" style="padding:6px;border-radius:6px">${errs.length} issue(s)</div>`;
+  });
+
+  clearBtn.addEventListener('click', ()=>{ sourceEl.value = ''; tokensWrap.innerHTML=''; validationDiv.innerHTML=''; summary.textContent = 'Tidak ada hasil.'; statusBox.innerHTML = ''; });
+
+  copyBtn.addEventListener('click', ()=>{ navigator.clipboard.writeText(sourceEl.value).then(()=>{ copyBtn.textContent='Copied'; setTimeout(()=>copyBtn.textContent='Copy',900); }); });
+
+  downloadJson.addEventListener('click', ()=>{
+    const tokens = tokenize(sourceEl.value);
+    const dataStr = JSON.stringify(tokens, null, 2);
+    const blob = new Blob([dataStr], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'tokens.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  });
+
+  // expose helper to window for debugging
+  window.gcl = { tokenize, validateStructure };
+})();
+</script>
+</body>
+</html>
